@@ -30,7 +30,7 @@ Obtain these locally and keep them outside this Git repository:
 
 ## 1. Build U-Boot
 
-Copy the three files below into the matching paths of a clean U-Boot v2024.10 tree, then add `rk3568-jl-rm01.dtb` to its Rockchip DTB make list if that tree does not discover it automatically.  The board DTS and defconfig deliberately enable the Rockchip I2C controller plus RK809 regulator support; do not omit those options.
+Copy the three files below into the matching paths of a clean U-Boot v2024.10 tree, then add `rk3568-jl-rm01.dtb` to its Rockchip DTB make list if that tree does not discover it automatically.  The board DTS and defconfig deliberately enable the Rockchip I2C controller plus RK809 regulator support and reserve a 128 KiB SPL early-malloc/BSS pool for the HAOS GPT; do not omit those options.
 
 ```text
 u-boot/configs/rk3568-jl-rm01_defconfig
