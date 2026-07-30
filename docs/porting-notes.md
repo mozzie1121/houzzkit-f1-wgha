@@ -16,7 +16,6 @@
 2. HAOS creates LZ4 zram devices during boot.  Enable both `CONFIG_LZ4_COMPRESS=y` and `CONFIG_CRYPTO_LZ4=y`.
 3. Supervisor / Docker needs the nftables and block-cgroup options in `kernel/haos.fragment`.  If Docker fails, HAOS may request an orderly reboot even after the kernel has booted.
 4. The RM01 BSP NPU path requires RK809 rails to be initialized before Linux begins.  The U-Boot DTS defines `vdd_logic` (DCDC_REG1), `vdd_gpu` (DCDC_REG2), and `vdd_npu` (DCDC_REG4), each enabled at 900 mV.  The U-Boot defconfig must enable `CONFIG_SYS_I2C_ROCKCHIP`, `CONFIG_PMIC_RK8XX`, and `CONFIG_REGULATOR_RK8XX`.  With these in place the kernel initializes `rknpu` without the former PMU ACK panic.
-5. HAOS has a larger GPT than the vendor eMMC layout.  Set both `CONFIG_SPL_SYS_MALLOC_F_LEN` and `CONFIG_SPL_BSS_MAX_SIZE` to `0x20000`; the vendor-sized 32 KiB SPL heap exhausts while parsing the HAOS GPT and then fails while loading the U-Boot FIT.
 
 ## A/B warning
 
