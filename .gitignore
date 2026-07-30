@@ -1,0 +1,17 @@
+# Generated images and vendor inputs are intentionally local-only.
+*.img
+*.img.xz
+*.xz
+*.itb
+*.bin
+*.squashfs
+*.log
+*.tar
+*.tar.*
+*.zip
+
+# Kernel / U-Boot build output
+u-boot/build/
+kernel/build/
+out/
+

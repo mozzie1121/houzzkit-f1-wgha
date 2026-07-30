@@ -1,0 +1,2 @@
+FDT=dtbs/rk3568-jl-rm01.dtb
+FDT_DEFAULT=dtbs/rk3568-jl-rm01.dtb
