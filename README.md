@@ -2,7 +2,7 @@
 
 Reusable bring-up material for running a locally obtained Home Assistant OS image on the SZZN RK3568-JL-RM01 / RZW03 board.
 
-This repository intentionally contains only small, reviewable source files: U-Boot configuration and DTS, a kernel config fragment and DTS patch, plus the HAOS A/B boot script.  It does **not** contain HAOS images, SD-card images, vendor BSP source, RKbin firmware, built binaries, or serial logs.
+This repository intentionally contains only small, reviewable source files: U-Boot configuration and DTS, a kernel config fragment, plus the HAOS A/B boot script.  It does **not** contain HAOS images, SD-card images, vendor BSP source, RKbin firmware, built binaries, or serial logs.
 
 ## Status
 
@@ -10,7 +10,7 @@ The documented configuration has booted HAOS successfully on the target board:
 
 `U-Boot 2024.10 -> boot.scr -> Linux Image + rk3568-jl-rm01.dtb -> EROFS HAOS root -> zram -> Docker/Supervisor`
 
-The NPU is disabled in the known-good configuration; see [porting notes](docs/porting-notes.md).
+The NPU is enabled in the known-good configuration.  U-Boot must initialize the RK809 power rails before Linux starts; see [porting notes](docs/porting-notes.md).
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ Obtain these locally and keep them outside this Git repository:
 
 ## 1. Build U-Boot
 
-Copy the three files below into the matching paths of a clean U-Boot v2024.10 tree, then add `rk3568-jl-rm01.dtb` to its Rockchip DTB make list if that tree does not discover it automatically.
+Copy the three files below into the matching paths of a clean U-Boot v2024.10 tree, then add `rk3568-jl-rm01.dtb` to its Rockchip DTB make list if that tree does not discover it automatically.  The board DTS and defconfig deliberately enable the Rockchip I2C controller plus RK809 regulator support; do not omit those options.
 
 ```text
 u-boot/configs/rk3568-jl-rm01_defconfig
@@ -63,7 +63,6 @@ Writing bootloader areas can make a board unbootable. Confirm the original `para
 From the vendor kernel tree:
 
 ```sh
-patch -p1 < /path/to/houzzkit-f1-wgha/kernel/0001-arm64-dts-rk3568-jl-rm01-disable-npu.patch
 make ARCH=arm64 jl_v1_linux_defconfig
 cat /path/to/houzzkit-f1-wgha/kernel/haos.fragment >> .config
 make ARCH=arm64 olddefconfig
@@ -111,8 +110,7 @@ At 1,500,000 baud the serial log should reach the HAOS boot-script banner, then 
 
 ```text
 u-boot/    U-Boot v2024.10 board configuration and minimal bootloader DTS
-kernel/    NPU workaround patch and HAOS kernel configuration fragment
+kernel/    HAOS kernel configuration fragment
 haos/      A/B U-Boot script source and DTB selector
 docs/      Compatibility notes and known limitations
 ```
-
