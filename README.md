@@ -10,7 +10,16 @@ The documented configuration has booted HAOS successfully on the target board:
 
 `U-Boot 2024.10 -> boot.scr -> Linux Image + rk3568-jl-rm01.dtb -> EROFS HAOS root -> zram -> Docker/Supervisor`
 
-The NPU is enabled in the known-good configuration.  U-Boot must initialize the RK809 power rails before Linux starts; see [porting notes](docs/porting-notes.md).
+The NPU is enabled in the known-good configuration. A physical boot validation on
+2026-07-31 reached the HAOS login prompt with `rknpu 0.9.8` initialized, Docker
+and Supervisor running. U-Boot must initialize the RK809 power rails before
+Linux starts and must not embed OP-TEE for this board; see the
+[validation record](docs/validated-npu-20260731.md) and
+[porting notes](docs/porting-notes.md).
+
+The current bootloader build does not yet wire the physical Recovery button to
+automatic RockUSB Loader mode. MaskROM remains the recovery route until that
+separate compatibility feature is restored; see [Loader-mode notes](docs/loader-mode.md).
 
 ## Prerequisites
 
