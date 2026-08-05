@@ -333,7 +333,6 @@ static int rockusb_tx_write(const char *buffer, unsigned int buffer_size)
 	memcpy(in_req->buf, buffer, buffer_size);
 	in_req->length = buffer_size;
 	debug("Transferring 0x%x bytes\n", buffer_size);
-	usb_ep_dequeue(rockusb_func->in_ep, in_req);
 	ret = usb_ep_queue(rockusb_func->in_ep, in_req, 0);
 	if (ret)
 		printf("Error %d on queue\n", ret);
@@ -444,6 +443,7 @@ static void tx_handler_ul_image(struct usb_ep *ep, struct usb_request *req)
 		in_req->length = 0;
 		in_req->complete = rockusb_complete;
 
+		printf("lba read done: %x bytes\n", f_rkusb->ul_bytes);
 		rockusb_tx_write_csw(f_rkusb->tag, 0, CSW_GOOD,
 				     USB_BULK_CS_WRAP_LEN);
 		return;
@@ -458,9 +458,8 @@ static void tx_handler_ul_image(struct usb_ep *ep, struct usb_request *req)
 	unsigned int blkcount = (transfer_size + f_rkusb->desc->blksz - 1) /
 				f_rkusb->desc->blksz;
 
-	debug("ul %x bytes, %x blks, read lba %x, ul_size:%x, ul_bytes:%x, ",
-	      transfer_size, blkcount, f_rkusb->lba,
-	      f_rkusb->ul_size, f_rkusb->ul_bytes);
+	printf("lba read chunk: lba=0x%x blks=%d size=0x%x\n",
+	       f_rkusb->lba, blkcount, transfer_size);
 
 	int blks = blk_dread(f_rkusb->desc, f_rkusb->lba, blkcount, rbuffer);
 
@@ -479,7 +478,6 @@ static void tx_handler_ul_image(struct usb_ep *ep, struct usb_request *req)
 	in_req->length = transfer_size;
 	in_req->complete = tx_handler_ul_image;
 	debug("Uploading 0x%x bytes\n", transfer_size);
-	usb_ep_dequeue(rockusb_func->in_ep, in_req);
 	ret = usb_ep_queue(rockusb_func->in_ep, in_req, 0);
 	if (ret)
 		printf("Error %d on queue\n", ret);
@@ -628,6 +626,101 @@ static void cb_read_flash_info(struct usb_ep *ep, struct usb_request *req)
 	rockusb_tx_write((char *)&finfo, sizeof(finfo));
 }
 
+/*
+ * RKDevTool queries loader capabilities (0xAA) before checking the chip.
+ * Layout follows the factory loader for eMMC:
+ *   byte0: DirectLBA(0) | First4MAccess(2) | NewVendorStorageAPI(4)
+ *   byte1: SwitchStorage(1) | LBAwriteParity(2)
+ */
+static void cb_read_capability(struct usb_ep *ep, struct usb_request *req)
+{
+	ALLOC_CACHE_ALIGN_BUFFER(struct fsg_bulk_cb_wrap, cbw,
+				 sizeof(struct fsg_bulk_cb_wrap));
+	struct f_rockusb *f_rkusb = get_rkusb();
+	u8 cap[8] = { 0x15, 0x06, 0, 0, 0, 0, 0, 0 };
+
+	printf("read capability\n");
+	memcpy((char *)cbw, req->buf, USB_BULK_CB_WRAP_LEN);
+
+	f_rkusb->tag = cbw->tag;
+	f_rkusb->in_req->complete = tx_handler_send_csw;
+
+	rockusb_tx_write((char *)cap, sizeof(cap));
+}
+
+/* Switch storage (0x2A). RM01 only has eMMC, so accept BOOT_TYPE_EMMC. */
+static void cb_switch_storage(struct usb_ep *ep, struct usb_request *req)
+{
+	ALLOC_CACHE_ALIGN_BUFFER(struct fsg_bulk_cb_wrap, cbw,
+				 sizeof(struct fsg_bulk_cb_wrap));
+	struct f_rockusb *f_rkusb = get_rkusb();
+	u32 media;
+
+	memcpy((char *)cbw, req->buf, USB_BULK_CB_WRAP_LEN);
+	media = 1 << cbw->CDB[1];
+
+	printf("switch storage: media=0x%x\n", media);
+
+	/* BOOT_TYPE_EMMC = 1 << 1 */
+	if (media != (1 << 1)) {
+		printf("storage 0x%x not supported\n", media);
+		rockusb_tx_write_csw(cbw->tag, 0, CSW_FAIL,
+				     USB_BULK_CS_WRAP_LEN);
+		return;
+	}
+
+	if (!f_rkusb->desc) {
+		char *type = f_rkusb->dev_type;
+		int index = f_rkusb->dev_index;
+
+		f_rkusb->desc = blk_get_dev(type, index);
+		if (!f_rkusb->desc ||
+		    f_rkusb->desc->type == DEV_TYPE_UNKNOWN) {
+			printf("invalid device \"%s\", %d\n", type, index);
+			rockusb_tx_write_csw(cbw->tag, 0, CSW_FAIL,
+					     USB_BULK_CS_WRAP_LEN);
+			return;
+		}
+	}
+
+	rockusb_tx_write_csw(cbw->tag, 0, CSW_GOOD, USB_BULK_CS_WRAP_LEN);
+}
+
+/* Read storage media (0x2B). Returns BOOT_TYPE_EMMC (2) for eMMC. */
+static void cb_read_storage(struct usb_ep *ep, struct usb_request *req)
+{
+	ALLOC_CACHE_ALIGN_BUFFER(struct fsg_bulk_cb_wrap, cbw,
+				 sizeof(struct fsg_bulk_cb_wrap));
+	struct f_rockusb *f_rkusb = get_rkusb();
+	u32 media = 0;
+
+	memcpy((char *)cbw, req->buf, USB_BULK_CB_WRAP_LEN);
+
+	if (!f_rkusb->desc) {
+		char *type = f_rkusb->dev_type;
+		int index = f_rkusb->dev_index;
+
+		f_rkusb->desc = blk_get_dev(type, index);
+		if (!f_rkusb->desc ||
+		    f_rkusb->desc->type == DEV_TYPE_UNKNOWN) {
+			printf("invalid device \"%s\", %d\n", type, index);
+			rockusb_tx_write_csw(cbw->tag, 0, CSW_FAIL,
+					     USB_BULK_CS_WRAP_LEN);
+			return;
+		}
+	}
+
+	if (f_rkusb->desc->uclass_id == UCLASS_MMC)
+		media = 1 << 1;	/* BOOT_TYPE_EMMC */
+
+	printf("read storage: media=0x%x\n", media);
+
+	f_rkusb->tag = cbw->tag;
+	f_rkusb->in_req->complete = tx_handler_send_csw;
+
+	rockusb_tx_write((char *)&media, sizeof(media));
+}
+
 int __weak rk_get_bootrom_chip_version(unsigned int *chip_info, int size)
 {
 	return 0;
@@ -699,8 +792,8 @@ static void cb_read_lba(struct usb_ep *ep, struct usb_request *req)
 	f_rkusb->ul_size = sector_count * f_rkusb->desc->blksz;
 	f_rkusb->ul_bytes = 0;
 
-	debug("require read %x bytes, %x sectors from lba %x\n",
-	      f_rkusb->ul_size, sector_count, f_rkusb->lba);
+	printf("lba read: start=0x%x sectors=%d size=0x%x\n",
+	       f_rkusb->lba, sector_count, f_rkusb->ul_size);
 
 	if (f_rkusb->ul_size == 0)  {
 		rockusb_tx_write_csw(cbw->tag, cbw->data_transfer_length,
@@ -933,6 +1026,18 @@ static const struct cmd_dispatch_info cmd_dispatch_info[] = {
 		.cb = cb_erase_lba,
 	},
 	{
+		.cmd = K_FW_CHANGE_STORAGE,
+		.cb = cb_switch_storage,
+	},
+	{
+		.cmd = K_FW_READ_STORAGE,
+		.cb = cb_read_storage,
+	},
+	{
+		.cmd = K_FW_READ_CAPABILITY,
+		.cb = cb_read_capability,
+	},
+	{
 		.cmd = K_FW_SESSION,
 		.cb = cb_not_support,
 	},
@@ -967,8 +1072,9 @@ static void rx_handler_command(struct usb_ep *ep, struct usb_request *req)
 	}
 
 	if (!func_cb) {
-		printf("unknown command: %s\n", (char *)req->buf);
-		rockusb_tx_write_str("FAILunknown command");
+		printf("unknown command: 0x%02x\n", cbw->CDB[0]);
+		rockusb_tx_write_csw(cbw->tag, 0, CSW_FAIL,
+				     USB_BULK_CS_WRAP_LEN);
 	} else {
 		if (req->actual < req->length) {
 			u8 *buf = (u8 *)req->buf;

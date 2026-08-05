@@ -16,9 +16,23 @@ The remaining LOADER-identity work is committed here:
   `rk_flash_info` layout as the factory loader (block_size=1024, page_size=4,
   flash_size=`blk_desc->lba`, flash_mask=1).
 
+The v2 build makes RKDevTool report LOADER (bcdUSB 0x0201) and pass
+GET_CHIP_VER/READ_FLASH_INFO. A v3 build adds the remaining commands the
+upgrade flow needs:
+
+- `READ_CAPABILITY` (0xAA): 8-byte capability, DirectLBA + First4M + new
+  vendor storage API (matches the factory loader for eMMC).
+- `CHANGE_STORAGE` (0x2A): accepts eMMC, replies CSW_GOOD.
+- `READ_STORAGE` (0x2B): returns BOOT_TYPE_EMMC.
+- Unknown commands now reply with a clean CSW_FAIL instead of emitting a
+  `FAILunknown command` string that corrupted the bulk-IN pipe (this was the
+  cause of "校验芯片失败" on older RKDevTool versions).
+- LBA read path gained chunk-level diagnostics; `usb_ep_dequeue` was dropped
+  from `rockusb_tx_write` to silence the DWC3 "request was not queued" spam.
+
 Latest candidate ITB:
-`u-boot-rm01-recovery-loader-v2.itb`
-(SHA-256 `99b6243a1930e9ca96da34a6b59467cc7cb110212b0e3bee88d9c4dbdcdf2a02`).
+`u-boot-rm01-recovery-loader-v3.itb`
+(SHA-256 `2bdad7e03d663435b1d3a86cefd382fbbec77cf227a64fcc220cf854d113a43b`).
 
 ## What works
 
@@ -50,6 +64,7 @@ uses `dr_mode = "otg"`.
 | `drivers/usb/gadget/g_dnl.c` | bcdUSB 0x0201 (LOADER identity) |
 | `drivers/usb/gadget/composite.c` | preserve 0x0201 in device descriptor; BOS at HS |
 | `drivers/usb/gadget/f_rockusb.c` | READ_FLASH_INFO (0x1A) for RKDevTool |
+| `arch/arm/include/asm/arch-rockchip/f_rockusb.h` | 0x2A/0x2B/0xAA command codes |
 | `patches/rm01-recovery-rockusb-final.patch` | Boot-mode hook + DTS + defconfig (reference) |
 | `patches/rm01-rockusb-loader-identity-location-fix.patch` | bcdUSB 0x0201 in `board.c` |
 | `patches/rm01-rockusb-preserve-loader-bcdusb.patch` | Keep bcdUSB 0x0201 in `composite.c` |
