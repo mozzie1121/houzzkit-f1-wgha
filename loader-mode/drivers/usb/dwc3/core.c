@@ -504,6 +504,9 @@ static void dwc3_phy_setup(struct dwc3 *dwc)
 
 	dwc3_writel(dwc->regs, DWC3_GUSB3PIPECTL(0), reg);
 
+	printf("RM01-DWC3: gusb3pipectl=0x%x (susphy=%d)\n",
+	       reg, !!(reg & DWC3_GUSB3PIPECTL_SUSPHY));
+
 	dwc3_hsphy_mode_setup(dwc);
 
 	mdelay(100);
@@ -604,11 +607,17 @@ static int dwc3_core_init(struct dwc3 *dwc)
 	dwc->revision = reg;
 
 	/* Handle USB2.0-only core configuration */
+	printf("RM01-DWC3: hwparams3=0x%x ssphy_ifc=%u max_speed=%d\n",
+	       dwc->hwparams.hwparams3,
+	       DWC3_GHWPARAMS3_SSPHY_IFC(dwc->hwparams.hwparams3),
+	       dwc->maximum_speed);
 	if (DWC3_GHWPARAMS3_SSPHY_IFC(dwc->hwparams.hwparams3) ==
 			DWC3_GHWPARAMS3_SSPHY_IFC_DIS) {
 		if (dwc->maximum_speed == USB_SPEED_SUPER)
 			dwc->maximum_speed = USB_SPEED_HIGH;
 	}
+	printf("RM01-DWC3: after usb2-only check max_speed=%d\n",
+	       dwc->maximum_speed);
 
 	/* issue device SoftReset too */
 	timeout = 5000;

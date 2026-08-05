@@ -31,8 +31,8 @@ upgrade flow needs:
   from `rockusb_tx_write` to silence the DWC3 "request was not queued" spam.
 
 Latest candidate ITB:
-`u-boot-rm01-recovery-loader-v10.itb`
-(SHA-256 `7b0e48dc9b5e3eeddaaf601347bd9daff7278d412073d396e60b3f44a60535d3`).
+`u-boot-rm01-recovery-loader-v12.itb`
+(SHA-256 `f03d8f3ef69fe0702a6e2661e56d1478e61cf7850b57f838e30a2b2d9f829174`).
 
 ## USB3 (v9)
 
@@ -55,6 +55,26 @@ v9 changes:
   `rk3568.dtsi` adds it); without the syscon binding the combphy driver
   failed with `failed to find peri_ctrl pipe-grf regmap` and the gadget
   never enumerated. Added `&pipegrf` compatible override.
+
+## USB3 status (v11/v12 diagnostics)
+
+Device side is fully configured for SuperSpeed and verified at runtime:
+
+- `RM01-COMBPHY: init id=0 mode=4` (PHY_TYPE_USB3 applied);
+- `RM01-DWC3: hwparams3=0x8290085 ssphy_ifc=1 max_speed=5` (SUPER, not
+  forced down to HS);
+- `RM01-DWC3: gusb3pipectl=0x1080002 (susphy=0)` (SS pipe enabled, not
+  suspended).
+
+The negotiated link is still `speed=3` (HighSpeed), which points at the
+physical layer (PC USB3 port/cable or the board connector carrying only
+USB2), not the loader configuration.
+
+Note: SuperSpeed alone would not speed up LOADER-mode flashing. RKDevTool
+uses `band=1` for our u-boot loader, so each 16KB LBA_WRITE waits for the
+eMMC programming latency (~4ms) before the next command; USB bandwidth does
+not hide that. The fast (~50s) path remains the MaskROM flow with the
+factory MiniLoaderAll (band=64).
 
 Test: use a USB3 port + USB3 cable on the PC; the serial log should report
 `negotiated speed=4` (super). RKDevTool should then use `band=64`.
