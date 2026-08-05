@@ -1030,8 +1030,26 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 	gadget->ep0->driver_data = cdev;
 	standard = (ctrl->bRequestType & USB_TYPE_MASK)
 						== USB_TYPE_STANDARD;
-	if (!standard)
+	if (!standard) {
+		/*
+		 * RKDevTool "Download Boot": vendor OUT request 0x0C with
+		 * wIndex 0x0471/0x0472 streams the MiniLoaderAll into RAM.
+		 * We already run a loader, so accept and discard the data to
+		 * make the tool believe the download succeeded and switch to
+		 * its fast band=64 profile for the rest of the session.
+		 */
+		if (ctrl->bRequestType == 0x40 &&
+		    ctrl->bRequest == 0x0C &&
+		    (w_index == 0x0471 || w_index == 0x0472)) {
+			printf("RM01 RockUSB: boot download ack len=%u\n",
+			       w_length);
+			req->length = w_length;
+			req->zero = 0;
+			value = usb_ep_queue(gadget->ep0, req, GFP_KERNEL);
+			return value < 0 ? value : 0;
+		}
 		goto unknown;
+	}
 
 	switch (ctrl->bRequest) {
 

@@ -149,6 +149,9 @@
 	dr_mode = "peripheral";
 	extcon = <&usb2phy0>;
 	maximum-speed = "super-speed";
+	clocks = <&cru CLK_USB3OTG0_REF>, <&cru CLK_USB3OTG0_SUSPEND>,
+		 <&cru ACLK_USB3OTG0>, <&cru PCLK_PIPE>;
+	clock-names = "ref_clk", "suspend_clk", "bus_clk", "pipe_clk";
 	phys = <&usb2phy0_otg>, <&combphy0 PHY_TYPE_USB3>;
 	phy-names = "usb2-phy", "usb3-phy";
 	snps,dis_enblslpm_quirk;

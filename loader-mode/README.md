@@ -31,8 +31,8 @@ upgrade flow needs:
   from `rockusb_tx_write` to silence the DWC3 "request was not queued" spam.
 
 Latest candidate ITB:
-`u-boot-rm01-recovery-loader-v12.itb`
-(SHA-256 `f03d8f3ef69fe0702a6e2661e56d1478e61cf7850b57f838e30a2b2d9f829174`).
+`u-boot-rm01-recovery-loader-v13.itb`
+(SHA-256 `42607fa20bf48f232be72d27f5b9e08f300cccdacd5898ddb4a78479139eb25a`).
 
 ## USB3 (v9)
 
@@ -75,6 +75,19 @@ uses `band=1` for our u-boot loader, so each 16KB LBA_WRITE waits for the
 eMMC programming latency (~4ms) before the next command; USB bandwidth does
 not hide that. The fast (~50s) path remains the MaskROM flow with the
 factory MiniLoaderAll (band=64).
+
+## band=64 experiment (v13)
+
+RKDevTool only switches to `band=64` after a successful "Download Boot"
+step in the same session (the factory SPL profile). v13 makes our u-boot
+accept the Rockchip boot download vendor request
+(`0x40/0x0C`, wIndex `0x0471`/`0x0472`) and discard the payload, so the
+tool believes MiniLoaderAll was loaded. Test: enter LOADER mode, click
+"下载Boot" in RKDevTool (expect `RM01 RockUSB: boot download ack` on the
+serial console), then run 升级固件 and check whether the log reports
+`band=64`. The DTS also gained `pipe_clk` (PCLK_PIPE) to match the factory
+kernel node (u-boot's CRU driver treats these clocks as no-ops, so this is
+cosmetic on the U-Boot side).
 
 Test: use a USB3 port + USB3 cable on the PC; the serial log should report
 `negotiated speed=4` (super). RKDevTool should then use `band=64`.
