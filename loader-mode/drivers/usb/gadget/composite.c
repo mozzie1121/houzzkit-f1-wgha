@@ -1070,12 +1070,12 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 				cdev->desc.bMaxPacketSize0 = 9;
 			} else {
 				/*
-				 * RKDevTool identifies Rockusb LOADER mode by
-				 * bcdUSB bit0 (bit0=1 -> LOADER). The generic
-				 * 0x0200 here overrides g_dnl's descriptor and
-				 * makes the tool report MaskROM, so keep 0x0201.
+				 * Keep the MaskROM classification (bit0=0) so
+				 * RKDevTool allows "Download Boot" and uses the
+				 * fast band=64 profile. The boot-download vendor
+				 * request is accepted in the !standard path above.
 				 */
-				cdev->desc.bcdUSB = cpu_to_le16(0x0201);
+				cdev->desc.bcdUSB = cpu_to_le16(0x0200);
 			}
 			value = min(w_length, (u16) sizeof cdev->desc);
 			memcpy(req->buf, &cdev->desc, value);
