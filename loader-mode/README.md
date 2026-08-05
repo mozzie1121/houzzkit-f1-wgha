@@ -1,12 +1,24 @@
 # Recovery-key RockUSB Loader mode (experimental)
 
-Status as of 2026-08-05: Recovery-key ADC detection works and the RockUSB
-gadget now enumerates on the PC ("Class for rockusb devices"). The missing
-piece was `DWC3_GUCTL1_DEV_FORCE_20_CLK_FOR_30_CLK` in `dwc3_core_init()`
-(required for USB2-only operation on the RK3568 DWC3); without it the core
-stayed halted (`DEVCTLHLT`) and every endpoint command timed out with -110.
-PC-side driver installation is still needed to make RKDevTool see the device
-as LOADER.
+Status as of 2026-08-05: Recovery-key ADC detection works, the RockUSB gadget
+enumerates on the PC ("Class for rockusb devices"), and the missing DWC3 piece
+was `DWC3_GUCTL1_DEV_FORCE_20_CLK_FOR_30_CLK` in `dwc3_core_init()` (required
+for USB2-only operation on the RK3568 DWC3).
+
+The remaining LOADER-identity work is committed here:
+
+- `g_dnl.c` reports `bcdUSB = 0x0201`. RKDevTool (and rkdeveloptool) classify
+  Rockusb devices solely by `bcdUSB & 1`: bit0=0 is MaskROM, bit0=1 is LOADER.
+- `composite.c` keeps that odd revision when answering `GET_DESCRIPTOR(DEVICE)`
+  (it used to force 0x0200 back), and now answers `GET_DESCRIPTOR(BOS)` at
+  HighSpeed too so Windows is happy enumerating a USB 2.1 device.
+- `f_rockusb.c` implements `READ_FLASH_INFO` (0x1A) with the same
+  `rk_flash_info` layout as the factory loader (block_size=1024, page_size=4,
+  flash_size=`blk_desc->lba`, flash_mask=1).
+
+Latest candidate ITB:
+`u-boot-rm01-recovery-loader-v2.itb`
+(SHA-256 `99b6243a1930e9ca96da34a6b59467cc7cb110212b0e3bee88d9c4dbdcdf2a02`).
 
 ## What works
 
@@ -35,6 +47,9 @@ uses `dr_mode = "otg"`.
 | `drivers/usb/dwc3/core.h` | GUCTL1 bit definition |
 | `drivers/usb/dwc3/gadget.c` / `dwc3-generic.c` | diagnostics only (can be removed) |
 | `drivers/phy/rockchip/phy-rockchip-inno-usb2.c` | clkout experiment (no-op on this board) |
+| `drivers/usb/gadget/g_dnl.c` | bcdUSB 0x0201 (LOADER identity) |
+| `drivers/usb/gadget/composite.c` | preserve 0x0201 in device descriptor; BOS at HS |
+| `drivers/usb/gadget/f_rockusb.c` | READ_FLASH_INFO (0x1A) for RKDevTool |
 | `patches/rm01-recovery-rockusb-final.patch` | Boot-mode hook + DTS + defconfig (reference) |
 | `patches/rm01-rockusb-loader-identity-location-fix.patch` | bcdUSB 0x0201 in `board.c` |
 | `patches/rm01-rockusb-preserve-loader-bcdusb.patch` | Keep bcdUSB 0x0201 in `composite.c` |
