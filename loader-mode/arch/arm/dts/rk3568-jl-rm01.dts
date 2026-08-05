@@ -177,6 +177,10 @@
 	status = "okay";
 };
 
+&pipegrf {
+	compatible = "rockchip,rk3568-pipe-grf", "syscon";
+};
+
 &uart2 {
 	status = "okay";
 };

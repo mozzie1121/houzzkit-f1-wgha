@@ -31,8 +31,8 @@ upgrade flow needs:
   from `rockusb_tx_write` to silence the DWC3 "request was not queued" spam.
 
 Latest candidate ITB:
-`u-boot-rm01-recovery-loader-v9.itb`
-(SHA-256 `b5988f220c2453bf7e7a1c26ee1edbc05c93af946a4bace5af20c5f19d94c2c5`).
+`u-boot-rm01-recovery-loader-v10.itb`
+(SHA-256 `7b0e48dc9b5e3eeddaaf601347bd9daff7278d412073d396e60b3f44a60535d3`).
 
 ## USB3 (v9)
 
@@ -51,6 +51,10 @@ v9 changes:
 - `rk3568-jl-rm01_defconfig`: `CONFIG_PHY_ROCKCHIP_NANENG_COMBOPHY=y`.
 - `f_rockusb.c`: SuperSpeed bulk descriptors (1024-byte packets) and
   `READ_CAPABILITY` now advertises the USB3 download bit (`0x17`).
+- v10 fix: `pipegrf` has no compatible in `rk356x.dtsi` (the upstream
+  `rk3568.dtsi` adds it); without the syscon binding the combphy driver
+  failed with `failed to find peri_ctrl pipe-grf regmap` and the gadget
+  never enumerated. Added `&pipegrf` compatible override.
 
 Test: use a USB3 port + USB3 cable on the PC; the serial log should report
 `negotiated speed=4` (super). RKDevTool should then use `band=64`.
