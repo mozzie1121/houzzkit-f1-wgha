@@ -124,7 +124,6 @@ static struct usb_gadget_strings *rkusb_strings[] = {
 };
 
 static struct f_rockusb *rockusb_func;
-static int mmc_info_printed;
 static void rx_handler_command(struct usb_ep *ep, struct usb_request *req);
 static int rockusb_flush_pending(void);
 static int rockusb_tx_write_csw(u32 tag, int residue, u8 status, int size);
@@ -296,9 +295,6 @@ static int rockusb_set_alt(struct usb_function *f, unsigned int interface,
 	struct usb_gadget *gadget = cdev->gadget;
 	struct f_rockusb *f_rkusb = func_to_rockusb(f);
 	const struct usb_endpoint_descriptor *d;
-
-	printf("RM01 RockUSB: negotiated speed=%d (1=low 2=full 3=high 4=super)\n",
-	       gadget->speed);
 
 	debug("%s: func: %s intf: %d alt: %d\n",
 	      __func__, f->name, interface, alt);
@@ -516,7 +512,6 @@ static void tx_handler_ul_image(struct usb_ep *ep, struct usb_request *req)
 		in_req->length = 0;
 		in_req->complete = rockusb_complete;
 
-		printf("lba read done: %x bytes\n", f_rkusb->ul_bytes);
 		rockusb_tx_write_csw(f_rkusb->tag, 0, CSW_GOOD,
 				     USB_BULK_CS_WRAP_LEN);
 		return;
@@ -530,9 +525,6 @@ static void tx_handler_ul_image(struct usb_ep *ep, struct usb_request *req)
 	/* Read at least one block */
 	unsigned int blkcount = (transfer_size + f_rkusb->desc->blksz - 1) /
 				f_rkusb->desc->blksz;
-
-	printf("lba read chunk: lba=0x%x blks=%d size=0x%x\n",
-	       f_rkusb->lba, blkcount, transfer_size);
 
 	int blks = blk_dread(f_rkusb->desc, f_rkusb->lba, blkcount, rbuffer);
 
@@ -596,14 +588,6 @@ static void rx_handler_dl_image(struct usb_ep *ep, struct usb_request *req)
 		req->length = EP_BUFFER_SIZE;
 		f_rkusb->buf = f_rkusb->buf_head;
 		debug("transfer 0x%x bytes done\n", f_rkusb->dl_size);
-		{
-			unsigned long us = timer_get_us() - f_rkusb->dl_start_us;
-
-			printf("dl cmd: %u bytes in %lu us, %lu KB/s\n",
-			       f_rkusb->dl_size, us,
-			       us ? (unsigned long)(f_rkusb->dl_size / 1024) *
-				   1000000UL / us : 0);
-		}
 		f_rkusb->dl_size = 0;
 		rockusb_tx_write_csw(f_rkusb->tag, 0, CSW_GOOD,
 				     USB_BULK_CS_WRAP_LEN);
@@ -640,7 +624,6 @@ static void cb_read_storage_id(struct usb_ep *ep, struct usb_request *req)
 	struct f_rockusb *f_rkusb = get_rkusb();
 	char emmc_id[] = "EMMC ";
 
-	printf("read storage id\n");
 	memcpy((char *)cbw, req->buf, USB_BULK_CB_WRAP_LEN);
 
 	/* Prepare for sending subsequent CSW_GOOD */
@@ -694,9 +677,6 @@ static void cb_read_flash_info(struct usb_ep *ep, struct usb_request *req)
 	if (finfo.flash_size)
 		finfo.flash_mask = 1;
 
-	printf("read flash info: size=0x%x mask=%d\n",
-	       finfo.flash_size, finfo.flash_mask);
-
 	/* Prepare for sending subsequent CSW_GOOD */
 	f_rkusb->tag = cbw->tag;
 	f_rkusb->in_req->complete = tx_handler_send_csw;
@@ -729,8 +709,6 @@ static void cb_read_capability(struct usb_ep *ep, struct usb_request *req)
 	/* NewIDB(0) | SwitchStorage(1) | LBAwriteParity(2) | USB3download(4) */
 	cap[1] = 0x17;
 
-	printf("read capability: req=%u send=%u\n", req_len, len);
-
 	f_rkusb->tag = cbw->tag;
 	f_rkusb->in_req->complete = tx_handler_send_csw;
 
@@ -747,8 +725,6 @@ static void cb_switch_storage(struct usb_ep *ep, struct usb_request *req)
 
 	memcpy((char *)cbw, req->buf, USB_BULK_CB_WRAP_LEN);
 	media = 1 << cbw->CDB[1];
-
-	printf("switch storage: media=0x%x\n", media);
 
 	/* BOOT_TYPE_EMMC = 1 << 1 */
 	if (media != (1 << 1)) {
@@ -802,8 +778,6 @@ static void cb_read_storage(struct usb_ep *ep, struct usb_request *req)
 	if (f_rkusb->desc->uclass_id == UCLASS_MMC)
 		media = 1 << 1;	/* BOOT_TYPE_EMMC */
 
-	printf("read storage: media=0x%x\n", media);
-
 	f_rkusb->tag = cbw->tag;
 	f_rkusb->in_req->complete = tx_handler_send_csw;
 
@@ -820,7 +794,7 @@ static void cb_get_chip_version(struct usb_ep *ep, struct usb_request *req)
 	ALLOC_CACHE_ALIGN_BUFFER(struct fsg_bulk_cb_wrap, cbw,
 				 sizeof(struct fsg_bulk_cb_wrap));
 	struct f_rockusb *f_rkusb = get_rkusb();
-	unsigned int chip_info[4], i;
+	unsigned int chip_info[4];
 
 	memset(chip_info, 0, sizeof(chip_info));
 	rk_get_bootrom_chip_version(chip_info, 4);
@@ -834,15 +808,6 @@ static void cb_get_chip_version(struct usb_ep *ep, struct usb_request *req)
 	 * Note that memory version do invert MSB/LSB so printing the char
 	 * buffer will show: A02341023180002V
 	 */
-	printf("read chip version: ");
-	for (i = 0; i < 4; i++) {
-		printf("%c%c%c%c",
-		       (chip_info[i] >> 24) & 0xFF,
-		       (chip_info[i] >> 16) & 0xFF,
-		       (chip_info[i] >>  8) & 0xFF,
-		       (chip_info[i] >>  0) & 0xFF);
-	}
-	printf("\n");
 	memcpy((char *)cbw, req->buf, USB_BULK_CB_WRAP_LEN);
 
 	/* Prepare for sending subsequent CSW_GOOD */
@@ -881,9 +846,6 @@ static void cb_read_lba(struct usb_ep *ep, struct usb_request *req)
 	f_rkusb->ul_size = sector_count * f_rkusb->desc->blksz;
 	f_rkusb->ul_bytes = 0;
 
-	printf("lba read: start=0x%x sectors=%d size=0x%x\n",
-	       f_rkusb->lba, sector_count, f_rkusb->ul_size);
-
 	if (f_rkusb->ul_size == 0)  {
 		rockusb_tx_write_csw(cbw->tag, cbw->data_transfer_length,
 				     CSW_FAIL, USB_BULK_CS_WRAP_LEN);
@@ -917,22 +879,6 @@ static void cb_write_lba(struct usb_ep *ep, struct usb_request *req)
 					     USB_BULK_CS_WRAP_LEN);
 			return;
 		}
-	}
-
-	if (!mmc_info_printed) {
-		struct mmc *mmc = find_mmc_device(f_rkusb->desc->devnum);
-
-		if (mmc) {
-			printf("RM01 MMC: dev=%d clock=%u bus_width=%u "
-			       "tran_speed=%u caps=0x%x\n",
-			       f_rkusb->desc->devnum, mmc->clock,
-			       mmc->bus_width, mmc->tran_speed,
-			       mmc->card_caps);
-		} else {
-			printf("RM01 MMC: no mmc for dev %d\n",
-			       f_rkusb->desc->devnum);
-		}
-		mmc_info_printed = 1;
 	}
 
 	{
@@ -1021,7 +967,6 @@ void __weak rkusb_set_reboot_flag(int flag)
 {
 	struct f_rockusb *f_rkusb = get_rkusb();
 
-	printf("rockkusb set reboot flag: %d\n", f_rkusb->reboot_flag);
 }
 
 static void compl_do_reset(struct usb_ep *ep, struct usb_request *req)

@@ -1041,16 +1041,11 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		if (ctrl->bRequestType == 0x40 &&
 		    ctrl->bRequest == 0x0C &&
 		    (w_index == 0x0471 || w_index == 0x0472)) {
-			printf("RM01 RockUSB: boot download ack len=%u\n",
-			       w_length);
 			req->length = w_length;
 			req->zero = 0;
 			value = usb_ep_queue(gadget->ep0, req, GFP_KERNEL);
 			return value < 0 ? value : 0;
 		}
-		printf("RM01 VND: type=%02x req=%02x val=%04x idx=%04x len=%u\n",
-		       ctrl->bRequestType, ctrl->bRequest, w_value, w_index,
-		       w_length);
 		goto unknown;
 	}
 
