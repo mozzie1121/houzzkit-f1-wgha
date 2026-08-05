@@ -43,3 +43,9 @@ the full RK3568 quirk set (`dis_enblslpm`, `dis-u2-freeclk-exists`,
 `xhci-trb-ent`) and `dr_mode = "otg"` on the `usb@fcc00000` controller. A
 candidate ITB with these settings was built (`loader-mode/`); hardware
 validation is pending.
+
+Factory loader-entry sequence (VBUS must be present before U-Boot starts):
+USB into OTG port, power on, hold Recovery, tap Reset, release Recovery after
+~5 s. A first validation with `dr_mode = "otg"` reached gadget registration
+but failed with `g_dnl_register: failed!, error: -110`; a second candidate
+with `dr_mode = "peripheral"` (quirks kept) is pending the same test.

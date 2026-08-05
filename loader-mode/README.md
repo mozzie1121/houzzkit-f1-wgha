@@ -45,6 +45,16 @@ scripts/rebuild-uboot-itb.sh
 1. Keep the validated idbloader (`idbloader-rm01-pmic-src-no-optee.img`) at
    eMMC LBA `0x40`.
 2. Flash `u-boot.itb` at eMMC LBA `0x4000`.
-3. Connect a USB data cable to the OTG/download port, hold Recovery and power
-   on. RKDevTool should report one LOADER device and the serial console should
-   not reset.
+3. Use the factory loader-entry sequence (VBUS must be present before U-Boot
+   starts):
+
+   ```text
+   1. plug USB data cable into the OTG/download port
+   2. plug in power
+   3. hold Recovery
+   4. tap Reset
+   5. release Recovery after ~5 s
+   ```
+
+   RKDevTool should report one LOADER device and the serial console should not
+   reset.
