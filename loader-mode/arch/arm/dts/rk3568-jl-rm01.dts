@@ -125,7 +125,7 @@
 
 /* USB0 is the RK3568 device-mode controller used by RockUSB. */
 &usb_host0_xhci {
-	dr_mode = "otg";
+	dr_mode = "peripheral";
 	extcon = <&usb2phy0>;
 	maximum-speed = "high-speed";
 	phys = <&usb2phy0_otg>;
@@ -133,6 +133,7 @@
 	snps,dis_enblslpm_quirk;
 	snps,dis-u2-freeclk-exists-quirk;
 	snps,dis_u2_susphy_quirk;
+	snps,dis_u3_susphy_quirk;
 	snps,dis-del-phy-power-chg-quirk;
 	snps,dis-tx-ipgap-linecheck-quirk;
 	snps,xhci-trb-ent-quirk;

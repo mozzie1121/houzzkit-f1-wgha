@@ -1,9 +1,12 @@
 # Recovery-key RockUSB Loader mode (experimental)
 
-Status as of 2026-08-05: Recovery-key ADC detection works; entering RockUSB
-used to reset the board immediately. A new candidate aligns the DWC3 gadget
-configuration with the factory firmware (`dr_mode = "otg"` plus the RK3568
-DWC3 quirk set) and is waiting for hardware validation.
+Status as of 2026-08-05: Recovery-key ADC detection works and the RockUSB
+gadget now enumerates on the PC ("Class for rockusb devices"). The missing
+piece was `DWC3_GUCTL1_DEV_FORCE_20_CLK_FOR_30_CLK` in `dwc3_core_init()`
+(required for USB2-only operation on the RK3568 DWC3); without it the core
+stayed halted (`DEVCTLHLT`) and every endpoint command timed out with -110.
+PC-side driver installation is still needed to make RKDevTool see the device
+as LOADER.
 
 ## What works
 
@@ -18,7 +21,8 @@ DWC3 quirk set) and is waiting for hardware validation.
 With the old DWC3 stanza (`dr_mode = "peripheral"`, only `dis_u2_susphy_quirk`),
 the gadget bound (`Loader descriptor enabled`) and the SoC reset immediately,
 looping forever while the key was held. The DWC3 on RK3568 requires the full
-vendor quirk set; the factory firmware also uses `dr_mode = "otg"`.
+vendor quirk set plus `DEV_FORCE_20_CLK_FOR_30_CLK`; the factory firmware also
+uses `dr_mode = "otg"`.
 
 ## Files
 
@@ -27,6 +31,10 @@ vendor quirk set; the factory firmware also uses `dr_mode = "otg"`.
 | `arch/arm/dts/rk3568-jl-rm01.dts` | Board DTS: ADC key, RK809 LDO7 `vcca_1v8`, OTG DWC3 stanza with quirks |
 | `arch/arm/mach-rockchip/boot_mode.c` | RM01 recovery-key hook into `rockchip_dnl_mode_check()` |
 | `configs/rk3568-jl-rm01_defconfig` | `CMD_ROCKUSB`, `ADC`/`SARADC_ROCKCHIP`, gadget options |
+| `drivers/usb/dwc3/core.c` | `DEV_FORCE_20_CLK_FOR_30_CLK` in `dwc3_core_init()` (key fix) |
+| `drivers/usb/dwc3/core.h` | GUCTL1 bit definition |
+| `drivers/usb/dwc3/gadget.c` / `dwc3-generic.c` | diagnostics only (can be removed) |
+| `drivers/phy/rockchip/phy-rockchip-inno-usb2.c` | clkout experiment (no-op on this board) |
 | `patches/rm01-recovery-rockusb-final.patch` | Boot-mode hook + DTS + defconfig (reference) |
 | `patches/rm01-rockusb-loader-identity-location-fix.patch` | bcdUSB 0x0201 in `board.c` |
 | `patches/rm01-rockusb-preserve-loader-bcdusb.patch` | Keep bcdUSB 0x0201 in `composite.c` |
