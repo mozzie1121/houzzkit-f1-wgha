@@ -1,0 +1,127 @@
+diff --git a/arch/arm/dts/rk3568-jl-rm01.dts b/arch/arm/dts/rk3568-jl-rm01.dts
+--- a/arch/arm/dts/rk3568-jl-rm01.dts
++++ b/arch/arm/dts/rk3568-jl-rm01.dts
+@@ -105,10 +105,42 @@
+ 				regulator-ramp-delay = <6001>;
+ 				regulator-initial-mode = <2>;
+ 			};
++
++			vcca_1v8: LDO_REG7 {
++				regulator-name = "vcca_1v8";
++				regulator-always-on;
++				regulator-boot-on;
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++			};
+ 		};
+ 	};
+ };
+ 
++/* Recovery is an active-low resistor key on SARADC channel 0. */
++&saradc {
++	vref-supply = <&vcca_1v8>;
++	status = "okay";
++};
++
++/* USB0 is the RK3568 device-mode controller used by RockUSB. */
++&usb_host0_xhci {
++	dr_mode = "peripheral";
++	extcon = <&usb2phy0>;
++	maximum-speed = "high-speed";
++	phys = <&usb2phy0_otg>;
++	phy-names = "usb2-phy";
++	status = "okay";
++};
++
++&usb2phy0 {
++	status = "okay";
++};
++
++&usb2phy0_otg {
++	status = "okay";
++};
++
+ &uart2 {
+ 	status = "okay";
+ };
+diff --git a/arch/arm/mach-rockchip/boot_mode.c b/arch/arm/mach-rockchip/boot_mode.c
+--- a/arch/arm/mach-rockchip/boot_mode.c
++++ b/arch/arm/mach-rockchip/boot_mode.c
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include <adc.h>
++#include <dm.h>
+ #include <command.h>
+ #include <env.h>
+ #include <log.h>
+@@ -37,10 +38,12 @@ void set_back_to_bootrom_dnl_flag(void)
+  */
+ #define KEY_DOWN_MIN_VAL	0
+ #define KEY_DOWN_MAX_VAL	30
++#define RM01_RECOVERY_ADC_CHANNEL	0
+ 
+ __weak int rockchip_dnl_key_pressed(void)
+ {
+ #if CONFIG_IS_ENABLED(ADC)
++	int channel = 1;
+ 	unsigned int val;
+ 	struct udevice *dev;
+ 	struct uclass *uc;
+@@ -50,10 +53,13 @@ __weak int rockchip_dnl_key_pressed(void)
+ 	if (ret)
+ 		return false;
+ 
++	if (of_machine_is_compatible("rockchip,rk3568-rzw03"))
++		channel = RM01_RECOVERY_ADC_CHANNEL;
++
+ 	ret = -ENODEV;
+ 	uclass_foreach_dev(dev, uc) {
+ 		if (!strncmp(dev->name, "saradc", 6)) {
+-			ret = adc_channel_single_shot(dev->name, 1, &val);
++			ret = adc_channel_single_shot(dev->name, channel, &val);
+ 			break;
+ 		}
+ 	}
+@@ -68,6 +74,9 @@ __weak int rockchip_dnl_key_pressed(void)
+ 		return false;
+ 	}
+ 
++	if (of_machine_is_compatible("rockchip,rk3568-rzw03"))
++		printf("RM01 recovery: SARADC%d raw=%u\n", channel, val);
++
+ 	if ((val >= KEY_DOWN_MIN_VAL) && (val <= KEY_DOWN_MAX_VAL))
+ 		return true;
+ 	else
+@@ -80,5 +89,13 @@ void rockchip_dnl_mode_check(void)
+ {
+ 	if (rockchip_dnl_key_pressed()) {
++		if (of_machine_is_compatible("rockchip,rk3568-rzw03")) {
++			printf("RM01 recovery key pressed; scheduling RockUSB Loader\n");
++			env_set("preboot",
++				"echo === RM01 Recovery: entering RockUSB Loader ===; "
++				"setenv preboot; rockusb 0 mmc 0");
++			return;
++		}
++
+ 		printf("download key pressed, entering download mode...");
+ 		set_back_to_bootrom_dnl_flag();
+ 		do_reset(NULL, 0, 0, NULL);
+diff --git a/configs/rk3568-jl-rm01_defconfig b/configs/rk3568-jl-rm01_defconfig
+--- a/configs/rk3568-jl-rm01_defconfig
++++ b/configs/rk3568-jl-rm01_defconfig
+@@ -13,5 +13,6 @@ CONFIG_SPL_SPI=y
+ CONFIG_SYS_LOAD_ADDR=0xc00800
+ CONFIG_DEBUG_UART=y
++CONFIG_USE_PREBOOT=y
+ CONFIG_FIT=y
+ CONFIG_FIT_VERBOSE=y
+ CONFIG_SPL_FIT_SIGNATURE=y
+@@ -55,5 +56,6 @@ CONFIG_DM_REGULATOR_FIXED=y
+ CONFIG_REGULATOR_RK8XX=y
+ CONFIG_CMD_REGULATOR=y
+-# CONFIG_ADC is not set
++CONFIG_ADC=y
++CONFIG_SARADC_ROCKCHIP=y
+ CONFIG_SPL_CLK=y
+ # CONFIG_USB_FUNCTION_FASTBOOT is not set

@@ -29,3 +29,17 @@ Port the vendor download-key check into the v2024.10 board support, add the
 RM01 SARADC/`adc-keys` definition and ADC driver support, and invoke `rockusb`
 only after detecting the key and USB VBUS. Test this separately from the
 validated NPU boot chain and retain MaskROM as the fallback throughout.
+
+## 2026-08-05 status update
+
+The ADC key path is implemented and verified on hardware (`SARADC0 raw=23`
+pressed / `raw=1023` released) and the RM01 hook schedules `rockusb 0 mmc 0`
+via the preboot environment. With the original DWC3 stanza the gadget bound
+(`Loader descriptor enabled`) and the SoC reset immediately.
+
+Root-cause analysis against the factory firmware shows the DWC3 gadget needs
+the full RK3568 quirk set (`dis_enblslpm`, `dis-u2-freeclk-exists`,
+`dis_u2_susphy`, `dis-del-phy-power-chg`, `dis-tx-ipgap-linecheck`,
+`xhci-trb-ent`) and `dr_mode = "otg"` on the `usb@fcc00000` controller. A
+candidate ITB with these settings was built (`loader-mode/`); hardware
+validation is pending.

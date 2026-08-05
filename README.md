@@ -119,7 +119,16 @@ At 1,500,000 baud the serial log should reach the HAOS boot-script banner, then 
 
 ```text
 u-boot/    U-Boot v2024.10 board configuration and minimal bootloader DTS
-kernel/    HAOS kernel configuration fragment
+kernel/    HAOS kernel configuration fragment + RM01 board DTS (uart3 enabled)
 haos/      A/B U-Boot script source and DTB selector
+loader-mode/  Experimental Recovery-key -> RockUSB Loader changes
+scripts/   Rebuild helpers for the kernel DTB and the U-Boot ITB
 docs/      Compatibility notes and known limitations
 ```
+
+### Loader mode
+
+Recovery-key RockUSB entry is still experimental: key detection works, but
+entering the download gadget used to reset the board. The current candidate
+aligns the DWC3 gadget with the factory quirk set (`dr_mode = "otg"`); see
+`loader-mode/README.md` and `docs/loader-mode.md`.

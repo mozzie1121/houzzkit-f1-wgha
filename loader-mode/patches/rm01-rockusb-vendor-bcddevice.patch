@@ -1,0 +1,30 @@
+diff --git a/arch/arm/mach-rockchip/board.c b/arch/arm/mach-rockchip/board.c
+--- a/arch/arm/mach-rockchip/board.c
++++ b/arch/arm/mach-rockchip/board.c
+@@ -245,0 +246,15 @@
++int g_dnl_get_board_bcd_device_number(int gcnum)
++{
++	/*
++	 * Rockchip's vendor U-Boot identifies a DWC3 download gadget as
++	 * controller revision 0x23 plus the historical 0x0200 base.  Keep
++	 * that identity on RM01 so the legacy Windows Rockusb driver sees the
++	 * same Loader device instead of U-Boot's release-number encoding.
++	 */
++	if (of_machine_is_compatible("rockchip,rk3568-rzw03")) {
++		printf("RM01 RockUSB: vendor bcdDevice=0x0223\n");
++		return 0x0223;
++	}
++
++	return gcnum;
++}
+diff --git a/drivers/usb/gadget/f_rockusb.c b/drivers/usb/gadget/f_rockusb.c
+--- a/drivers/usb/gadget/f_rockusb.c
++++ b/drivers/usb/gadget/f_rockusb.c
+@@ -69,6 +69,7 @@ static struct usb_descriptor_header *rkusb_fs_function[] = {
+ 	(struct usb_descriptor_header *)&interface_desc,
+ 	(struct usb_descriptor_header *)&fs_ep_in,
+ 	(struct usb_descriptor_header *)&fs_ep_out,
++	NULL,
+ };
+ 
+ static struct usb_descriptor_header *rkusb_hs_function[] = {

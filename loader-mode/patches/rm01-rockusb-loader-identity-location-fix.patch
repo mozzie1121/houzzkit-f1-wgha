@@ -1,0 +1,50 @@
+diff --git a/drivers/usb/gadget/f_rockusb.c b/drivers/usb/gadget/f_rockusb.c
+--- a/drivers/usb/gadget/f_rockusb.c
++++ b/drivers/usb/gadget/f_rockusb.c
+@@ -17,24 +17,6 @@
+ #include <g_dnl.h>
+ #include <asm/arch-rockchip/f_rockusb.h>
+ 
+-/*
+- * Rockchip's vendor U-Boot uses bcdUSB 0x0201 to distinguish a Loader
+- * gadget from the SoC BootROM/MaskROM device.  VID/PID intentionally stay
+- * at the RK3568 values 2207:350a; RKDevTool uses this descriptor revision
+- * to report LOADER mode.
+- */
+-int g_dnl_bind_fixup(struct usb_device_descriptor *dev, const char *name)
+-{
+-	if (!strcmp(name, "usb_dnl_rockusb")) {
+-		dev->idVendor = cpu_to_le16(0x2207);
+-		dev->idProduct = cpu_to_le16(CONFIG_USB_GADGET_PRODUCT_NUM);
+-		dev->bcdUSB = cpu_to_le16(0x0201);
+-		printf("RM01 RockUSB: Loader descriptor enabled (bcdUSB=0x0201)\n");
+-	}
+-
+-	return 0;
+-}
+-
+ static inline struct f_rockusb *func_to_rockusb(struct usb_function *f)
+ {
+ 	return container_of(f, struct f_rockusb, usb_function);
+diff --git a/arch/arm/mach-rockchip/board.c b/arch/arm/mach-rockchip/board.c
+--- a/arch/arm/mach-rockchip/board.c
++++ b/arch/arm/mach-rockchip/board.c
+@@ -229,10 +229,17 @@
+ int g_dnl_bind_fixup(struct usb_device_descriptor *dev, const char *name)
+ {
+ 	if (!strcmp(name, "usb_dnl_ums"))
+ 		put_unaligned(ROCKCHIP_G_DNL_UMS_PRODUCT_NUM, &dev->idProduct);
+-	else
++	else {
+ 		put_unaligned(CONFIG_USB_GADGET_PRODUCT_NUM, &dev->idProduct);
+ 
++		if (!strcmp(name, "usb_dnl_rockusb")) {
++			put_unaligned(cpu_to_le16(0x0201), &dev->bcdUSB);
++			printf("RM01 RockUSB: Loader descriptor enabled "
++			       "(bcdUSB=0x0201)\n");
++		}
++	}
++
+ 	return 0;
+ }
+ #endif /* CONFIG_USB_GADGET_DOWNLOAD */

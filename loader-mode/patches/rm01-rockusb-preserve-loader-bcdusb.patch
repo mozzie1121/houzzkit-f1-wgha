@@ -1,0 +1,16 @@
+diff --git a/drivers/usb/gadget/composite.c b/drivers/usb/gadget/composite.c
+--- a/drivers/usb/gadget/composite.c
++++ b/drivers/usb/gadget/composite.c
+@@ -1050,7 +1050,11 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
+ 			if (gadget->speed >= USB_SPEED_SUPER) {
+ 				cdev->desc.bcdUSB = cpu_to_le16(0x0310);
+ 				cdev->desc.bMaxPacketSize0 = 9;
+-			} else {
++			} else if (!(le16_to_cpu(cdev->desc.bcdUSB) & 1)) {
++				/*
++				 * Preserve an odd board-provided revision such as
++				 * Rockchip Loader's 0x0201 identity.
++				 */
+ 				cdev->desc.bcdUSB = cpu_to_le16(0x0200);
+ 			}
+ 			value = min(w_length, (u16) sizeof cdev->desc);
