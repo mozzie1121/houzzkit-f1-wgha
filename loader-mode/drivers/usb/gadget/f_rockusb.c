@@ -11,7 +11,9 @@
 #include <log.h>
 #include <malloc.h>
 #include <memalign.h>
+#include <mmc.h>
 #include <part.h>
+#include <time.h>
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
 #include <linux/usb/composite.h>
@@ -56,6 +58,22 @@ static struct usb_endpoint_descriptor hs_ep_out = {
 	.wMaxPacketSize		= cpu_to_le16(512),
 };
 
+static struct usb_endpoint_descriptor ss_ep_in = {
+	.bLength		= USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType	= USB_DT_ENDPOINT,
+	.bEndpointAddress	= USB_DIR_IN,
+	.bmAttributes		= USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize		= cpu_to_le16(1024),
+};
+
+static struct usb_endpoint_descriptor ss_ep_out = {
+	.bLength		= USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType	= USB_DT_ENDPOINT,
+	.bEndpointAddress	= USB_DIR_OUT,
+	.bmAttributes		= USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize		= cpu_to_le16(1024),
+};
+
 static struct usb_interface_descriptor interface_desc = {
 	.bLength		= USB_DT_INTERFACE_SIZE,
 	.bDescriptorType	= USB_DT_INTERFACE,
@@ -81,6 +99,13 @@ static struct usb_descriptor_header *rkusb_hs_function[] = {
 	NULL,
 };
 
+static struct usb_descriptor_header *rkusb_ss_function[] = {
+	(struct usb_descriptor_header *)&interface_desc,
+	(struct usb_descriptor_header *)&ss_ep_in,
+	(struct usb_descriptor_header *)&ss_ep_out,
+	NULL,
+};
+
 static const char rkusb_name[] = "Rockchip Rockusb";
 
 static struct usb_string rkusb_string_defs[] = {
@@ -99,6 +124,7 @@ static struct usb_gadget_strings *rkusb_strings[] = {
 };
 
 static struct f_rockusb *rockusb_func;
+static int mmc_info_printed;
 static void rx_handler_command(struct usb_ep *ep, struct usb_request *req);
 static int rockusb_tx_write_csw(u32 tag, int residue, u8 status, int size);
 
@@ -183,6 +209,11 @@ static int rockusb_bind(struct usb_configuration *c, struct usb_function *f)
 		hs_ep_out.bEndpointAddress = fs_ep_out.bEndpointAddress;
 		f->hs_descriptors = rkusb_hs_function;
 	}
+	if (gadget_is_superspeed(gadget)) {
+		ss_ep_in.bEndpointAddress = fs_ep_in.bEndpointAddress;
+		ss_ep_out.bEndpointAddress = fs_ep_out.bEndpointAddress;
+		f->ss_descriptors = rkusb_ss_function;
+	}
 
 	s = env_get("serial#");
 	if (s)
@@ -248,6 +279,9 @@ static int rockusb_set_alt(struct usb_function *f, unsigned int interface,
 	struct usb_gadget *gadget = cdev->gadget;
 	struct f_rockusb *f_rkusb = func_to_rockusb(f);
 	const struct usb_endpoint_descriptor *d;
+
+	printf("RM01 RockUSB: negotiated speed=%d (1=low 2=full 3=high 4=super)\n",
+	       gadget->speed);
 
 	debug("%s: func: %s intf: %d alt: %d\n",
 	      __func__, f->name, interface, alt);
@@ -526,6 +560,14 @@ static void rx_handler_dl_image(struct usb_ep *ep, struct usb_request *req)
 		req->length = EP_BUFFER_SIZE;
 		f_rkusb->buf = f_rkusb->buf_head;
 		debug("transfer 0x%x bytes done\n", f_rkusb->dl_size);
+		{
+			unsigned long us = timer_get_us() - f_rkusb->dl_start_us;
+
+			printf("dl cmd: %u bytes in %lu us, %lu KB/s\n",
+			       f_rkusb->dl_size, us,
+			       us ? (unsigned long)(f_rkusb->dl_size / 1024) *
+				   1000000UL / us : 0);
+		}
 		f_rkusb->dl_size = 0;
 		rockusb_tx_write_csw(f_rkusb->tag, 0, CSW_GOOD,
 				     USB_BULK_CS_WRAP_LEN);
@@ -630,22 +672,33 @@ static void cb_read_flash_info(struct usb_ep *ep, struct usb_request *req)
  * RKDevTool queries loader capabilities (0xAA) before checking the chip.
  * Layout follows the factory loader for eMMC:
  *   byte0: DirectLBA(0) | First4MAccess(2) | NewVendorStorageAPI(4)
- *   byte1: SwitchStorage(1) | LBAwriteParity(2)
+ *   byte1: NewIDB(0) | SwitchStorage(1) | LBAwriteParity(2)
  */
 static void cb_read_capability(struct usb_ep *ep, struct usb_request *req)
 {
 	ALLOC_CACHE_ALIGN_BUFFER(struct fsg_bulk_cb_wrap, cbw,
 				 sizeof(struct fsg_bulk_cb_wrap));
 	struct f_rockusb *f_rkusb = get_rkusb();
-	u8 cap[8] = { 0x15, 0x06, 0, 0, 0, 0, 0, 0 };
+	u8 cap[512] = { 0 };
+	u32 req_len, len;
 
-	printf("read capability\n");
 	memcpy((char *)cbw, req->buf, USB_BULK_CB_WRAP_LEN);
+	req_len = le32_to_cpu(cbw->data_transfer_length);
+	len = req_len < 8 ? 8 : req_len;
+	if (len > sizeof(cap))
+		len = sizeof(cap);
+
+	/* DirectLBA(0) | First4MAccess(2) | NewVendorStorageAPI(4) */
+	cap[0] = 0x15;
+	/* NewIDB(0) | SwitchStorage(1) | LBAwriteParity(2) | USB3download(4) */
+	cap[1] = 0x17;
+
+	printf("read capability: req=%u send=%u\n", req_len, len);
 
 	f_rkusb->tag = cbw->tag;
 	f_rkusb->in_req->complete = tx_handler_send_csw;
 
-	rockusb_tx_write((char *)cap, sizeof(cap));
+	rockusb_tx_write((char *)cap, len);
 }
 
 /* Switch storage (0x2A). RM01 only has eMMC, so accept BOOT_TYPE_EMMC. */
@@ -830,9 +883,26 @@ static void cb_write_lba(struct usb_ep *ep, struct usb_request *req)
 		}
 	}
 
+	if (!mmc_info_printed) {
+		struct mmc *mmc = find_mmc_device(f_rkusb->desc->devnum);
+
+		if (mmc) {
+			printf("RM01 MMC: dev=%d clock=%u bus_width=%u "
+			       "tran_speed=%u caps=0x%x\n",
+			       f_rkusb->desc->devnum, mmc->clock,
+			       mmc->bus_width, mmc->tran_speed,
+			       mmc->card_caps);
+		} else {
+			printf("RM01 MMC: no mmc for dev %d\n",
+			       f_rkusb->desc->devnum);
+		}
+		mmc_info_printed = 1;
+	}
+
 	f_rkusb->lba = get_unaligned_be32(&cbw->CDB[2]);
 	f_rkusb->dl_size = sector_count * f_rkusb->desc->blksz;
 	f_rkusb->dl_bytes = 0;
+	f_rkusb->dl_start_us = timer_get_us();
 
 	debug("require write %x bytes, %x sectors to lba %x\n",
 	      f_rkusb->dl_size, sector_count, f_rkusb->lba);

@@ -28,6 +28,27 @@
 	chosen {
 		stdout-path = "serial2:1500000n8";
 	};
+
+	pipe_phy_grf0: syscon@fdc70000 {
+		compatible = "rockchip,rk3568-pipe-phy-grf", "syscon";
+		reg = <0x0 0xfdc70000 0x0 0x1000>;
+	};
+
+	combphy0: phy@fe820000 {
+		compatible = "rockchip,rk3568-naneng-combphy";
+		reg = <0x0 0xfe820000 0x0 0x100>;
+		clocks = <&pmucru CLK_PCIEPHY0_REF>,
+			 <&cru PCLK_PIPEPHY0>,
+			 <&cru PCLK_PIPE>;
+		clock-names = "ref", "apb", "pipe";
+		assigned-clocks = <&pmucru CLK_PCIEPHY0_REF>;
+		assigned-clock-rates = <100000000>;
+		resets = <&cru SRST_PIPEPHY0>;
+		rockchip,pipe-grf = <&pipegrf>;
+		rockchip,pipe-phy-grf = <&pipe_phy_grf0>;
+		#phy-cells = <1>;
+		status = "disabled";
+	};
 };
 
 &sdhci {
@@ -127,9 +148,9 @@
 &usb_host0_xhci {
 	dr_mode = "peripheral";
 	extcon = <&usb2phy0>;
-	maximum-speed = "high-speed";
-	phys = <&usb2phy0_otg>;
-	phy-names = "usb2-phy";
+	maximum-speed = "super-speed";
+	phys = <&usb2phy0_otg>, <&combphy0 PHY_TYPE_USB3>;
+	phy-names = "usb2-phy", "usb3-phy";
 	snps,dis_enblslpm_quirk;
 	snps,dis-u2-freeclk-exists-quirk;
 	snps,dis_u2_susphy_quirk;
@@ -149,6 +170,10 @@
 };
 
 &usb2phy0_grf {
+	status = "okay";
+};
+
+&combphy0 {
 	status = "okay";
 };
 

@@ -31,8 +31,29 @@ upgrade flow needs:
   from `rockusb_tx_write` to silence the DWC3 "request was not queued" spam.
 
 Latest candidate ITB:
-`u-boot-rm01-recovery-loader-v3.itb`
-(SHA-256 `2bdad7e03d663435b1d3a86cefd382fbbec77cf227a64fcc220cf854d113a43b`).
+`u-boot-rm01-recovery-loader-v9.itb`
+(SHA-256 `b5988f220c2453bf7e7a1c26ee1edbc05c93af946a4bace5af20c5f19d94c2c5`).
+
+## USB3 (v9)
+
+The RM01 OTG port is wired to `combphy0` (USB3) in the factory kernel DT, but
+the minimal U-Boot DT only referenced the USB2 PHY and forced
+`maximum-speed = "high-speed"`, so the loader enumerated at HighSpeed and
+RKDevTool fell back to `band=1` (each 16KB eMMC write waits for the card's
+~4ms programming latency, ~4MB/s total). The factory SPL runs at SuperSpeed,
+which is why its flow uses `band=64` and finishes in ~50s.
+
+v9 changes:
+
+- `rk3568-jl-rm01.dts`: added `pipe_phy_grf0` + `combphy0` (naneng combo
+  PHY) and wired `phys = <&usb2phy0_otg>, <&combphy0 PHY_TYPE_USB3>` with
+  `maximum-speed = "super-speed"`.
+- `rk3568-jl-rm01_defconfig`: `CONFIG_PHY_ROCKCHIP_NANENG_COMBOPHY=y`.
+- `f_rockusb.c`: SuperSpeed bulk descriptors (1024-byte packets) and
+  `READ_CAPABILITY` now advertises the USB3 download bit (`0x17`).
+
+Test: use a USB3 port + USB3 cable on the PC; the serial log should report
+`negotiated speed=4` (super). RKDevTool should then use `band=64`.
 
 ## What works
 
