@@ -126,6 +126,7 @@ static struct usb_gadget_strings *rkusb_strings[] = {
 static struct f_rockusb *rockusb_func;
 static int mmc_info_printed;
 static void rx_handler_command(struct usb_ep *ep, struct usb_request *req);
+static int rockusb_flush_pending(void);
 static int rockusb_tx_write_csw(u32 tag, int residue, u8 status, int size);
 
 struct f_rockusb *get_rkusb(void)
@@ -149,6 +150,14 @@ struct f_rockusb *get_rkusb(void)
 
 		f_rkusb->buf = f_rkusb->buf_head;
 		memset(f_rkusb->buf_head, 0, RKUSB_BUF_SIZE);
+	}
+
+	if (!f_rkusb->agg_buf) {
+		f_rkusb->agg_buf = memalign(CONFIG_SYS_CACHELINE_SIZE,
+					    AGG_BUF_SIZE);
+		if (!f_rkusb->agg_buf)
+			return NULL;
+		memset(f_rkusb->agg_buf, 0, AGG_BUF_SIZE);
 	}
 	return f_rkusb;
 }
@@ -232,6 +241,10 @@ static void rockusb_disable(struct usb_function *f)
 {
 	struct f_rockusb *f_rkusb = func_to_rockusb(f);
 
+	/* Make sure deferred writes land before the USB session goes away */
+	if (f_rkusb->agg_bytes && f_rkusb->desc)
+		rockusb_flush_pending();
+
 	usb_ep_disable(f_rkusb->out_ep);
 	usb_ep_disable(f_rkusb->in_ep);
 
@@ -249,6 +262,10 @@ static void rockusb_disable(struct usb_function *f)
 		free(f_rkusb->buf_head);
 		f_rkusb->buf_head = NULL;
 		f_rkusb->buf = NULL;
+	}
+	if (f_rkusb->agg_buf) {
+		free(f_rkusb->agg_buf);
+		f_rkusb->agg_buf = NULL;
 	}
 }
 
@@ -459,6 +476,28 @@ static unsigned int rx_bytes_expected(struct usb_ep *ep)
 	return rx_remain;
 }
 
+/* Flush accumulated WRITE_LBA data to eMMC in one large transfer */
+static int rockusb_flush_pending(void)
+{
+	struct f_rockusb *f_rkusb = get_rkusb();
+	int blks, blkcnt;
+
+	if (!f_rkusb->agg_bytes)
+		return 0;
+
+	blkcnt = f_rkusb->agg_bytes / f_rkusb->desc->blksz;
+	blks = blk_dwrite(f_rkusb->desc, f_rkusb->lba, blkcnt,
+			  f_rkusb->agg_buf);
+	if (blks != blkcnt) {
+		printf("failed writing to device %s: %d\n", f_rkusb->dev_type,
+		       f_rkusb->dev_index);
+		return -1;
+	}
+	f_rkusb->lba += blkcnt;
+	f_rkusb->agg_bytes = 0;
+	return 0;
+}
+
 /* usb_request complete call back to handle upload image */
 static void tx_handler_ul_image(struct usb_ep *ep, struct usb_request *req)
 {
@@ -537,22 +576,19 @@ static void rx_handler_dl_image(struct usb_ep *ep, struct usb_request *req)
 	if (buffer_size < transfer_size)
 		transfer_size = buffer_size;
 
-	memcpy((void *)f_rkusb->buf, buffer, transfer_size);
+	memcpy((void *)(f_rkusb->agg_buf + f_rkusb->agg_bytes), buffer,
+	       transfer_size);
 	f_rkusb->dl_bytes += transfer_size;
-	int blks = 0, blkcnt = transfer_size  / f_rkusb->desc->blksz;
+	f_rkusb->agg_bytes += transfer_size;
 
-	debug("dl %x bytes, %x blks, write lba %x, dl_size:%x, dl_bytes:%x, ",
-	      transfer_size, blkcnt, f_rkusb->lba, f_rkusb->dl_size,
-	      f_rkusb->dl_bytes);
-	blks = blk_dwrite(f_rkusb->desc, f_rkusb->lba, blkcnt, f_rkusb->buf);
-	if (blks != blkcnt) {
-		printf("failed writing to device %s: %d\n", f_rkusb->dev_type,
-		       f_rkusb->dev_index);
-		rockusb_tx_write_csw(f_rkusb->tag, 0, CSW_FAIL,
-				     USB_BULK_CS_WRAP_LEN);
-		return;
+	/* Flush once the aggregation buffer is full */
+	if (f_rkusb->agg_bytes >= AGG_BUF_SIZE) {
+		if (rockusb_flush_pending() != 0) {
+			rockusb_tx_write_csw(f_rkusb->tag, 0, CSW_FAIL,
+					     USB_BULK_CS_WRAP_LEN);
+			return;
+		}
 	}
-	f_rkusb->lba += blkcnt;
 
 	/* Check if transfer is done */
 	if (f_rkusb->dl_bytes >= f_rkusb->dl_size) {
@@ -899,7 +935,28 @@ static void cb_write_lba(struct usb_ep *ep, struct usb_request *req)
 		mmc_info_printed = 1;
 	}
 
-	f_rkusb->lba = get_unaligned_be32(&cbw->CDB[2]);
+	{
+		unsigned int new_lba = get_unaligned_be32(&cbw->CDB[2]);
+
+		if (f_rkusb->agg_bytes > 0) {
+			/*
+			 * Only merge with the previous CBW when the LBA
+			 * sequence is contiguous; otherwise flush first.
+			 */
+			if (new_lba != f_rkusb->lba +
+			    f_rkusb->agg_bytes / f_rkusb->desc->blksz) {
+				if (rockusb_flush_pending() != 0) {
+					rockusb_tx_write_csw(cbw->tag, 0,
+							     CSW_FAIL,
+							     USB_BULK_CS_WRAP_LEN);
+					return;
+				}
+				f_rkusb->lba = new_lba;
+			}
+		} else {
+			f_rkusb->lba = new_lba;
+		}
+	}
 	f_rkusb->dl_size = sector_count * f_rkusb->desc->blksz;
 	f_rkusb->dl_bytes = 0;
 	f_rkusb->dl_start_us = timer_get_us();
@@ -1146,6 +1203,16 @@ static void rx_handler_command(struct usb_ep *ep, struct usb_request *req)
 		rockusb_tx_write_csw(cbw->tag, 0, CSW_FAIL,
 				     USB_BULK_CS_WRAP_LEN);
 	} else {
+		/* Deferred writes must land before any non-WRITE_LBA command */
+		if (func_cb != cb_write_lba &&
+		    rockusb_flush_pending() != 0) {
+			rockusb_tx_write_csw(cbw->tag, 0, CSW_FAIL,
+					     USB_BULK_CS_WRAP_LEN);
+			*cmdbuf = '\0';
+			req->actual = 0;
+			usb_ep_queue(ep, req, 0);
+			return;
+		}
 		if (req->actual < req->length) {
 			u8 *buf = (u8 *)req->buf;
 

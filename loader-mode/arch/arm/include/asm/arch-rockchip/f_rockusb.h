@@ -19,7 +19,7 @@
 #define RX_ENDPOINT_MAXIMUM_PACKET_SIZE_1_1  0x0040
 #define TX_ENDPOINT_MAXIMUM_PACKET_SIZE      0x0040
 
-#define EP_BUFFER_SIZE			4096
+#define EP_BUFFER_SIZE			65536
 /*
  * EP_BUFFER_SIZE must always be an integral multiple of maxpacket size
  * (64 or 512 or 1024), else we break on certain controllers like DWC3
@@ -28,6 +28,8 @@
 
 #define RKUSB_BUF_SIZE		EP_BUFFER_SIZE * 2
 #define RKBLOCK_BUF_SIZE		4096
+/* cross-CBW write aggregation: accumulate before flushing to eMMC */
+#define AGG_BUF_SIZE		(1024 * 1024)
 
 #define RKUSB_STATUS_IDLE			0
 #define RKUSB_STATUS_CMD			1
@@ -131,6 +133,9 @@ struct f_rockusb {
 	int reboot_flag;
 	void *buf;
 	void *buf_head;
+	void *agg_buf;
+	unsigned int agg_bytes;
+	unsigned long dl_start_us;
 };
 
 /* init rockusb device, tell rockusb which device you want to read/write*/

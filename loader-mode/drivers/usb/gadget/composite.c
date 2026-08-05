@@ -1048,6 +1048,9 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 			value = usb_ep_queue(gadget->ep0, req, GFP_KERNEL);
 			return value < 0 ? value : 0;
 		}
+		printf("RM01 VND: type=%02x req=%02x val=%04x idx=%04x len=%u\n",
+		       ctrl->bRequestType, ctrl->bRequest, w_value, w_index,
+		       w_length);
 		goto unknown;
 	}
 
