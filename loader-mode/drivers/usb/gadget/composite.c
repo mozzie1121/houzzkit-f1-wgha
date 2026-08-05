@@ -1067,13 +1067,8 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 				cdev->desc.bcdUSB = cpu_to_le16(0x0310);
 				cdev->desc.bMaxPacketSize0 = 9;
 			} else {
-				/*
-				 * Keep the MaskROM classification (bit0=0) so
-				 * RKDevTool allows "Download Boot" and uses the
-				 * fast band=64 profile. The boot-download vendor
-				 * request is accepted in the !standard path above.
-				 */
-				cdev->desc.bcdUSB = cpu_to_le16(0x0200);
+				/* This is the recovery-key RockUSB loader */
+				cdev->desc.bcdUSB = cpu_to_le16(0x0201);
 			}
 			value = min(w_length, (u16) sizeof cdev->desc);
 			memcpy(req->buf, &cdev->desc, value);

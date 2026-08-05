@@ -59,12 +59,13 @@ static struct usb_device_descriptor device_desc = {
 
 	/*
 	 * RKDevTool classifies Rockusb devices by bcdUSB bit0:
-	 * bit0=0 -> MaskROM, bit0=1 -> LOADER. The tool only allows
-	 * "Download Boot" (and its fast band=64 profile) for MaskROM-
-	 * classified devices, so report 0x0200 and accept the boot-download
-	 * vendor request in composite.c to enter that profile.
+	 * bit0=0 -> MaskROM, bit0=1 -> LOADER. The recovery-key entry is
+	 * our RockUSB loader, so report 0x0201 (LOADER). The fast band=64
+	 * profile is only used when the session starts from real MaskROM,
+	 * where the BootROM reports its own descriptor before our loader
+	 * takes over.
 	 */
-	.bcdUSB = __constant_cpu_to_le16(0x0200),
+	.bcdUSB = __constant_cpu_to_le16(0x0201),
 	.bDeviceClass = USB_CLASS_PER_INTERFACE,
 	.bDeviceSubClass = 0, /*0x02:CDC-modem , 0x00:CDC-serial*/
 
